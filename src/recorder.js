@@ -32,7 +32,7 @@ export class Recorder {
                 this.resolveRecordingPromise();
             }
 
-            bufferCount++;
+            this.bufferCount++;
 
             var buffer = [];
             for (var channel = 0; channel < this.config.numChannels; channel++) {

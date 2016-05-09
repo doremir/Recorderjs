@@ -67,7 +67,7 @@ var Recorder = exports.Recorder = function () {
                 _this.resolveRecordingPromise();
             }
 
-            bufferCount++;
+            _this.bufferCount++;
 
             var buffer = [];
             for (var channel = 0; channel < _this.config.numChannels; channel++) {
