@@ -6,7 +6,12 @@ module.exports = require("./recorder").Recorder;
 },{"./recorder":2}],2:[function(require,module,exports){
 'use strict';
 
-var _createClass = (function () {
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.Recorder = undefined;
+
+var _createClass = function () {
     function defineProperties(target, props) {
         for (var i = 0; i < props.length; i++) {
             var descriptor = props[i];descriptor.enumerable = descriptor.enumerable || false;descriptor.configurable = true;if ("value" in descriptor) descriptor.writable = true;Object.defineProperty(target, descriptor.key, descriptor);
@@ -14,12 +19,7 @@ var _createClass = (function () {
     }return function (Constructor, protoProps, staticProps) {
         if (protoProps) defineProperties(Constructor.prototype, protoProps);if (staticProps) defineProperties(Constructor, staticProps);return Constructor;
     };
-})();
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.Recorder = undefined;
+}();
 
 var _inlineWorker = require('inline-worker');
 
@@ -35,7 +35,7 @@ function _classCallCheck(instance, Constructor) {
     }
 }
 
-var Recorder = exports.Recorder = (function () {
+var Recorder = exports.Recorder = function () {
     function Recorder(source, cfg) {
         var _this = this;
 
@@ -46,6 +46,10 @@ var Recorder = exports.Recorder = (function () {
             numChannels: 2,
             mimeType: 'audio/wav'
         };
+        this.bufferCount = 0;
+        this.recordingPromise = null;
+        this.resolveRecordingPromise = null;
+        this.rejectRecordingPromise = null;
         this.recording = false;
         this.callbacks = {
             getBuffer: [],
@@ -58,6 +62,12 @@ var Recorder = exports.Recorder = (function () {
 
         this.node.onaudioprocess = function (e) {
             if (!_this.recording) return;
+
+            if (_this.bufferCount === 0) {
+                _this.resolveRecordingPromise();
+            }
+
+            bufferCount++;
 
             var buffer = [];
             for (var channel = 0; channel < _this.config.numChannels; channel++) {
@@ -76,8 +86,8 @@ var Recorder = exports.Recorder = (function () {
         this.worker = new _inlineWorker2.default(function () {
             var recLength = 0,
                 recBuffers = [],
-                sampleRate = undefined,
-                numChannels = undefined;
+                sampleRate = void 0,
+                numChannels = void 0;
 
             self.onmessage = function (e) {
                 switch (e.data.command) {
@@ -117,7 +127,7 @@ var Recorder = exports.Recorder = (function () {
                 for (var channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
                 }
-                var interleaved = undefined;
+                var interleaved = void 0;
                 if (numChannels === 2) {
                     interleaved = interleave(buffers[0], buffers[1]);
                 } else {
@@ -243,7 +253,18 @@ var Recorder = exports.Recorder = (function () {
     _createClass(Recorder, [{
         key: 'record',
         value: function record() {
+            var _this2 = this;
+
+            if (this.recording) {
+                return this.recordingPromise;
+            }
+            this.bufferCount = 0;
             this.recording = true;
+            this.recordingPromise = new Promise(function (resolve, reject) {
+                _this2.resolveRecordingPromise = resolve;
+                _this2.rejectRecordingPromise = reject;
+            });
+            return this.recordingPromise;
         }
     }, {
         key: 'stop',
@@ -293,7 +314,7 @@ var Recorder = exports.Recorder = (function () {
     }]);
 
     return Recorder;
-})();
+}();
 
 exports.default = Recorder;
 

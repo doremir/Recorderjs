@@ -7,6 +7,10 @@ export class Recorder {
         mimeType: 'audio/wav'
     };
 
+    bufferCount = 0;
+    recordingPromise = null;
+    resolveRecordingPromise = null;
+    rejectRecordingPromise = null;
     recording = false;
 
     callbacks = {
@@ -23,6 +27,12 @@ export class Recorder {
 
         this.node.onaudioprocess = (e) => {
             if (!this.recording) return;
+
+            if(this.bufferCount === 0) {
+                this.resolveRecordingPromise();
+            }
+
+            bufferCount++;
 
             var buffer = [];
             for (var channel = 0; channel < this.config.numChannels; channel++) {
@@ -207,7 +217,16 @@ export class Recorder {
 
 
     record() {
+        if(this.recording) {
+            return this.recordingPromise;
+        }
+        this.bufferCount = 0;
         this.recording = true;
+        this.recordingPromise = new Promise((resolve, reject) => {
+            this.resolveRecordingPromise = resolve;
+            this.rejectRecordingPromise = reject;
+        });
+        return this.recordingPromise;
     }
 
     stop() {

@@ -25,7 +25,7 @@ Creates a recorder instance.
     rec.record()
     rec.stop()
 
-Pretty self-explanatory... **record** will begin capturing audio and **stop** will cease capturing audio. Subsequent calls to **record** will add to the current recording.
+Pretty self-explanatory... **record** will begin capturing audio and **stop** will cease capturing audio. Subsequent calls to **record** will add to the current recording. The method **record** returns a promise that resolves when the first buffer is read.
 
     rec.clear()
 
