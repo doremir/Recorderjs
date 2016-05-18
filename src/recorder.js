@@ -15,7 +15,8 @@ export class Recorder {
 
     callbacks = {
         getBuffer: [],
-        exportWAV: []
+        exportWAV: [],
+        exportRaw: []
     };
 
     constructor(source, cfg) {
@@ -65,6 +66,9 @@ export class Recorder {
                     case 'exportWAV':
                         exportWAV(e.data.type);
                         break;
+                    case 'exportRaw':
+                        exportRaw(e.data.type);
+                        break;
                     case 'getBuffer':
                         getBuffer();
                         break;
@@ -102,6 +106,23 @@ export class Recorder {
                 let audioBlob = new Blob([dataview], {type: type});
 
                 self.postMessage({command: 'exportWAV', data: audioBlob});
+            }
+
+            function exportRaw(type) {
+                let buffers = [];
+                for (let channel = 0; channel < numChannels; channel++) {
+                    buffers.push(mergeBuffers(recBuffers[channel], recLength));
+                }
+                let interleaved;
+                if (numChannels === 2) {
+                    interleaved = interleave(buffers[0], buffers[1]);
+                } else {
+                    interleaved = buffers[0];
+                }
+                let dataview = encode16BitPCM(interleaved);
+                let audioBlob = new Blob([dataview], {type: type});
+
+                self.postMessage({command: 'exportRaw', data: audioBlob});
             }
 
             function getBuffer() {
@@ -160,6 +181,15 @@ export class Recorder {
                 for (let i = 0; i < string.length; i++) {
                     view.setUint8(offset + i, string.charCodeAt(i));
                 }
+            }
+
+            function encode16BitPCM(samples) {
+                let buffer = new ArrayBuffer(samples.length * 2);
+                let view = new DataView(buffer);
+
+                floatTo16BitPCM(view, 0, samples);
+
+                return view;
             }
 
             function encodeWAV(samples) {
@@ -256,6 +286,18 @@ export class Recorder {
         this.worker.postMessage({
             command: 'exportWAV',
             type: mimeType
+        });
+    }
+
+    exportRaw(cb) {
+        cb = cb || this.config.callback;
+        if (!cb) throw new Error('Callback not set');
+
+        this.callbacks.exportRaw.push(cb);
+
+        this.worker.postMessage({
+            command: 'exportRaw',
+            type: 'application/octet-stream'
         });
     }
 
