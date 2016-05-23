@@ -53,7 +53,8 @@ var Recorder = exports.Recorder = function () {
         this.recording = false;
         this.callbacks = {
             getBuffer: [],
-            exportWAV: []
+            exportWAV: [],
+            exportRaw: []
         };
 
         Object.assign(this.config, cfg);
@@ -100,6 +101,9 @@ var Recorder = exports.Recorder = function () {
                     case 'exportWAV':
                         exportWAV(e.data.type);
                         break;
+                    case 'exportRaw':
+                        exportRaw(e.data.type);
+                        break;
                     case 'getBuffer':
                         getBuffer();
                         break;
@@ -137,6 +141,23 @@ var Recorder = exports.Recorder = function () {
                 var audioBlob = new Blob([dataview], { type: type });
 
                 self.postMessage({ command: 'exportWAV', data: audioBlob });
+            }
+
+            function exportRaw(type) {
+                var buffers = [];
+                for (var channel = 0; channel < numChannels; channel++) {
+                    buffers.push(mergeBuffers(recBuffers[channel], recLength));
+                }
+                var interleaved = void 0;
+                if (numChannels === 2) {
+                    interleaved = interleave(buffers[0], buffers[1]);
+                } else {
+                    interleaved = buffers[0];
+                }
+                var dataview = encode16BitPCM(interleaved);
+                var audioBlob = new Blob([dataview], { type: type });
+
+                self.postMessage({ command: 'exportRaw', data: audioBlob });
             }
 
             function getBuffer() {
@@ -195,6 +216,15 @@ var Recorder = exports.Recorder = function () {
                 for (var i = 0; i < string.length; i++) {
                     view.setUint8(offset + i, string.charCodeAt(i));
                 }
+            }
+
+            function encode16BitPCM(samples) {
+                var buffer = new ArrayBuffer(samples.length * 2);
+                var view = new DataView(buffer);
+
+                floatTo16BitPCM(view, 0, samples);
+
+                return view;
             }
 
             function encodeWAV(samples) {
@@ -298,6 +328,19 @@ var Recorder = exports.Recorder = function () {
             this.worker.postMessage({
                 command: 'exportWAV',
                 type: mimeType
+            });
+        }
+    }, {
+        key: 'exportRaw',
+        value: function exportRaw(cb) {
+            cb = cb || this.config.callback;
+            if (!cb) throw new Error('Callback not set');
+
+            this.callbacks.exportRaw.push(cb);
+
+            this.worker.postMessage({
+                command: 'exportRaw',
+                type: 'application/octet-stream'
             });
         }
     }], [{
