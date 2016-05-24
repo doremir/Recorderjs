@@ -8,9 +8,16 @@ export class Recorder {
     };
 
     bufferCount = 0;
+
     recordingPromise = null;
     resolveRecordingPromise = null;
     rejectRecordingPromise = null;
+
+    fetchingRaw = false;
+    exportRawPromise = null;
+    resolveExportRawPromise = null;
+    rejectExportRawPromise = null;
+
     recording = false;
 
     callbacks = {
@@ -29,7 +36,7 @@ export class Recorder {
         this.node.onaudioprocess = (e) => {
             if (!this.recording) return;
 
-            if(this.bufferCount === 0) {
+            if (this.bufferCount === 0) {
                 this.resolveRecordingPromise();
             }
 
@@ -39,10 +46,15 @@ export class Recorder {
             for (var channel = 0; channel < this.config.numChannels; channel++) {
                 buffer.push(e.inputBuffer.getChannelData(channel));
             }
+
             this.worker.postMessage({
                 command: 'record',
-                buffer: buffer
+                buffer: buffer,
+                fetchingRaw: this.fetchingRaw,
+                fetchingRawType: 'application/octet-stream'
             });
+
+            if (this.fetchingRaw) this.fetchingRaw = false;
         };
 
         source.connect(this.node);
@@ -61,7 +73,7 @@ export class Recorder {
                         init(e.data.config);
                         break;
                     case 'record':
-                        record(e.data.buffer);
+                        record(e.data.buffer, e.data.fetchingRaw, e.data.fetchingRawType);
                         break;
                     case 'exportWAV':
                         exportWAV(e.data.type);
@@ -84,11 +96,15 @@ export class Recorder {
                 initBuffers();
             }
 
-            function record(inputBuffer) {
+            function record(inputBuffer, fetchingRaw, fetchingRawType) {
+
                 for (var channel = 0; channel < numChannels; channel++) {
                     recBuffers[channel].push(inputBuffer[channel]);
                 }
                 recLength += inputBuffer[0].length;
+                if (fetchingRaw) {
+                    exportRaw(fetchingRawType);
+                }
             }
 
             function exportWAV(type) {
@@ -109,6 +125,7 @@ export class Recorder {
             }
 
             function exportRaw(type) {
+                console.log('Calling exportRaw in worker');
                 let buffers = [];
                 for (let channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
@@ -238,9 +255,13 @@ export class Recorder {
         });
 
         this.worker.onmessage = (e) => {
+
             let cb = this.callbacks[e.data.command].pop();
             if (typeof cb == 'function') {
                 cb(e.data.data);
+            }
+            if (e.data.command === 'exportRaw') {
+                this.resolveExportRawPromise(e.data.data);
             }
         };
     }
@@ -260,6 +281,13 @@ export class Recorder {
     }
 
     stop() {
+        if (this.fetchingRaw) {
+            this.fetchingRaw = false;
+            this.worker.postMessage({
+                command: 'exportRaw',
+                type: 'application/octet-stream'
+            });
+        }
         this.recording = false;
     }
 
@@ -290,15 +318,19 @@ export class Recorder {
     }
 
     exportRaw(cb) {
-        cb = cb || this.config.callback;
-        if (!cb) throw new Error('Callback not set');
-
-        this.callbacks.exportRaw.push(cb);
-
-        this.worker.postMessage({
-            command: 'exportRaw',
-            type: 'application/octet-stream'
+        this.exportRawPromise = new Promise((resolve, reject) => {
+            this.resolveExportRawPromise = resolve;
+            this.rejectExportRawPromise = reject;
+            this.fetchingRaw = true;
         });
+        if (!this.recording) {
+            this.fetchingRaw = false;
+            this.worker.postMessage({
+                command: 'exportRaw',
+                type: 'application/octet-stream'
+            });
+        }
+        return this.exportRawPromise;
     }
 
     static

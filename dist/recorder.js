@@ -50,6 +50,10 @@ var Recorder = exports.Recorder = function () {
         this.recordingPromise = null;
         this.resolveRecordingPromise = null;
         this.rejectRecordingPromise = null;
+        this.fetchingRaw = false;
+        this.exportRawPromise = null;
+        this.resolveExportRawPromise = null;
+        this.rejectExportRawPromise = null;
         this.recording = false;
         this.callbacks = {
             getBuffer: [],
@@ -74,10 +78,15 @@ var Recorder = exports.Recorder = function () {
             for (var channel = 0; channel < _this.config.numChannels; channel++) {
                 buffer.push(e.inputBuffer.getChannelData(channel));
             }
+
             _this.worker.postMessage({
                 command: 'record',
-                buffer: buffer
+                buffer: buffer,
+                fetchingRaw: _this.fetchingRaw,
+                fetchingRawType: 'application/octet-stream'
             });
+
+            if (_this.fetchingRaw) _this.fetchingRaw = false;
         };
 
         source.connect(this.node);
@@ -96,7 +105,7 @@ var Recorder = exports.Recorder = function () {
                         init(e.data.config);
                         break;
                     case 'record':
-                        record(e.data.buffer);
+                        record(e.data.buffer, e.data.fetchingRaw, e.data.fetchingRawType);
                         break;
                     case 'exportWAV':
                         exportWAV(e.data.type);
@@ -119,11 +128,15 @@ var Recorder = exports.Recorder = function () {
                 initBuffers();
             }
 
-            function record(inputBuffer) {
+            function record(inputBuffer, fetchingRaw, fetchingRawType) {
+
                 for (var channel = 0; channel < numChannels; channel++) {
                     recBuffers[channel].push(inputBuffer[channel]);
                 }
                 recLength += inputBuffer[0].length;
+                if (fetchingRaw) {
+                    exportRaw(fetchingRawType);
+                }
             }
 
             function exportWAV(type) {
@@ -144,6 +157,7 @@ var Recorder = exports.Recorder = function () {
             }
 
             function exportRaw(type) {
+                console.log('Calling exportRaw in worker');
                 var buffers = [];
                 for (var channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
@@ -273,9 +287,13 @@ var Recorder = exports.Recorder = function () {
         });
 
         this.worker.onmessage = function (e) {
+
             var cb = _this.callbacks[e.data.command].pop();
             if (typeof cb == 'function') {
                 cb(e.data.data);
+            }
+            if (e.data.command === 'exportRaw') {
+                _this.resolveExportRawPromise(e.data.data);
             }
         };
     }
@@ -299,6 +317,13 @@ var Recorder = exports.Recorder = function () {
     }, {
         key: 'stop',
         value: function stop() {
+            if (this.fetchingRaw) {
+                this.fetchingRaw = false;
+                this.worker.postMessage({
+                    command: 'exportRaw',
+                    type: 'application/octet-stream'
+                });
+            }
             this.recording = false;
         }
     }, {
@@ -333,15 +358,21 @@ var Recorder = exports.Recorder = function () {
     }, {
         key: 'exportRaw',
         value: function exportRaw(cb) {
-            cb = cb || this.config.callback;
-            if (!cb) throw new Error('Callback not set');
+            var _this3 = this;
 
-            this.callbacks.exportRaw.push(cb);
-
-            this.worker.postMessage({
-                command: 'exportRaw',
-                type: 'application/octet-stream'
+            this.exportRawPromise = new Promise(function (resolve, reject) {
+                _this3.resolveExportRawPromise = resolve;
+                _this3.rejectExportRawPromise = reject;
+                _this3.fetchingRaw = true;
             });
+            if (!this.recording) {
+                this.fetchingRaw = false;
+                this.worker.postMessage({
+                    command: 'exportRaw',
+                    type: 'application/octet-stream'
+                });
+            }
+            return this.exportRawPromise;
         }
     }], [{
         key: 'forceDownload',
