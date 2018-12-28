@@ -4,7 +4,8 @@ export class Recorder {
     config = {
         bufferLen: 4096,
         numChannels: 2,
-        mimeType: 'audio/wav'
+        mimeType: 'audio/wav',
+        outputFormat: 's16'
     };
 
     bufferCount = 0;
@@ -65,7 +66,8 @@ export class Recorder {
             let recLength = 0,
                 recBuffers = [],
                 sampleRate,
-                numChannels;
+                numChannels,
+                outputFormat;
 
             self.onmessage = function (e) {
                 switch (e.data.command) {
@@ -93,6 +95,7 @@ export class Recorder {
             function init(config) {
                 sampleRate = config.sampleRate;
                 numChannels = config.numChannels;
+                outputFormat = config.outputFormat;
                 initBuffers();
             }
 
@@ -125,7 +128,7 @@ export class Recorder {
             }
 
             function exportRaw(type) {
-                console.log('Calling exportRaw in worker');
+                console.log('[recorderjs] Calling exportRaw in worker');
                 let buffers = [];
                 for (let channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
@@ -136,7 +139,8 @@ export class Recorder {
                 } else {
                     interleaved = buffers[0];
                 }
-                let dataview = encode16BitPCM(interleaved);
+                console.log('[recorderjs] outputFormat:', outputFormat);
+                var dataview = (outputFormat && outputFormat === 'f64') ? float32Tofloat64(interleaved) : encode16BitPCM(interleaved);
                 let audioBlob = new Blob([dataview], {type: type});
 
                 self.postMessage({command: 'exportRaw', data: audioBlob});
@@ -185,6 +189,14 @@ export class Recorder {
                     inputIndex++;
                 }
                 return result;
+            }
+
+            function float32Tofloat64(float32Array) {
+                var float64Array = new Float64Array(float32Array.length);
+                for (var i = 0; i < float32Array.length; i++) {
+                    float64Array[i] = float32Array[i];
+                }
+                return float64Array;
             }
 
             function floatTo16BitPCM(output, offset, input) {
@@ -250,7 +262,8 @@ export class Recorder {
             command: 'init',
             config: {
                 sampleRate: this.context.sampleRate,
-                numChannels: this.config.numChannels
+                numChannels: this.config.numChannels,
+                outputFormat: this.config.outputFormat
             }
         });
 

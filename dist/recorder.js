@@ -1,4 +1,4 @@
-(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.Recorder = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.Recorder = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 "use strict";
 
 module.exports = require("./recorder").Recorder;
@@ -44,7 +44,8 @@ var Recorder = exports.Recorder = function () {
         this.config = {
             bufferLen: 4096,
             numChannels: 2,
-            mimeType: 'audio/wav'
+            mimeType: 'audio/wav',
+            outputFormat: 's16'
         };
         this.bufferCount = 0;
         this.recordingPromise = null;
@@ -97,7 +98,8 @@ var Recorder = exports.Recorder = function () {
             var recLength = 0,
                 recBuffers = [],
                 sampleRate = void 0,
-                numChannels = void 0;
+                numChannels = void 0,
+                outputFormat = void 0;
 
             self.onmessage = function (e) {
                 switch (e.data.command) {
@@ -125,6 +127,7 @@ var Recorder = exports.Recorder = function () {
             function init(config) {
                 sampleRate = config.sampleRate;
                 numChannels = config.numChannels;
+                outputFormat = config.outputFormat;
                 initBuffers();
             }
 
@@ -157,7 +160,7 @@ var Recorder = exports.Recorder = function () {
             }
 
             function exportRaw(type) {
-                console.log('Calling exportRaw in worker');
+                console.log('[recorderjs] Calling exportRaw in worker');
                 var buffers = [];
                 for (var channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
@@ -168,7 +171,8 @@ var Recorder = exports.Recorder = function () {
                 } else {
                     interleaved = buffers[0];
                 }
-                var dataview = encode16BitPCM(interleaved);
+                console.log('[recorderjs] outputFormat:', outputFormat);
+                var dataview = outputFormat && outputFormat === 'f64' ? float32Tofloat64(interleaved) : encode16BitPCM(interleaved);
                 var audioBlob = new Blob([dataview], { type: type });
 
                 self.postMessage({ command: 'exportRaw', data: audioBlob });
@@ -217,6 +221,14 @@ var Recorder = exports.Recorder = function () {
                     inputIndex++;
                 }
                 return result;
+            }
+
+            function float32Tofloat64(float32Array) {
+                var float64Array = new Float64Array(float32Array.length);
+                for (var i = 0; i < float32Array.length; i++) {
+                    float64Array[i] = float32Array[i];
+                }
+                return float64Array;
             }
 
             function floatTo16BitPCM(output, offset, input) {
@@ -282,7 +294,8 @@ var Recorder = exports.Recorder = function () {
             command: 'init',
             config: {
                 sampleRate: this.context.sampleRate,
-                numChannels: this.config.numChannels
+                numChannels: this.config.numChannels,
+                outputFormat: this.config.outputFormat
             }
         });
 
